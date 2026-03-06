@@ -1,4 +1,11 @@
 (function () {
+  function getStorageMeta() {
+    return {
+      key: window.CarbonTrackerConfig.STORAGE_KEY,
+      version: window.CarbonTrackerConfig.STORAGE_VERSION,
+    };
+  }
+
   function cloneDefaultState() {
     return Object.assign({}, window.CarbonTrackerConfig.DEFAULT_STATE);
   }
@@ -98,6 +105,10 @@
     });
   }
 
+  function normalizeValueByStep(value, step) {
+    return Math.max(0, Math.round(value / step) * step);
+  }
+
   function sanitizeState(input) {
     const baseState = cloneDefaultState();
     const items = window.CarbonTrackerConfig.ITEMS;
@@ -108,21 +119,36 @@
     const legacyElectricityValue = hasLegacyElectricityValue
       ? Math.max(0, Number(input.electricityMinutes) || 0)
       : 0;
+    const hasLegacyExtraElectricityValue =
+      input &&
+      typeof input === "object" &&
+      Object.prototype.hasOwnProperty.call(input, "extraElectricityMinutes");
+    const legacyExtraElectricityValue = hasLegacyExtraElectricityValue
+      ? Math.max(0, Number(input.extraElectricityMinutes) || 0)
+      : 0;
 
     if (!input || typeof input !== "object") {
       return baseState;
     }
 
     items.forEach(function (item) {
-      const rawValue = input[item.key];
-      const numericValue = Number(rawValue);
+      let rawValue = input[item.key];
 
-      if (!Number.isFinite(numericValue) || numericValue < 0) {
-        baseState[item.key] = 0;
+      if (item.key === "hvacMinutes" && rawValue === undefined && hasLegacyExtraElectricityValue) {
+        rawValue = legacyExtraElectricityValue;
+      }
+
+      if (rawValue === undefined || rawValue === null || rawValue === "") {
         return;
       }
 
-      const normalizedValue = Math.round(numericValue / item.step) * item.step;
+      const numericValue = Number(rawValue);
+
+      if (!Number.isFinite(numericValue) || numericValue < 0) {
+        return;
+      }
+
+      const normalizedValue = normalizeValueByStep(numericValue, item.step);
       baseState[item.key] = Math.max(0, normalizedValue);
     });
 
@@ -133,12 +159,15 @@
         baseState.baseLightingMinutes = defaultLighting;
       }
 
-      if (
-        !Object.prototype.hasOwnProperty.call(input, "extraElectricityMinutes")
-      ) {
-        baseState.extraElectricityMinutes = Math.max(
-          0,
-          legacyElectricityValue - defaultLighting
+      if (!Object.prototype.hasOwnProperty.call(input, "hvacMinutes")) {
+        const inferredHvacMinutes =
+          legacyElectricityValue <= defaultLighting
+            ? legacyElectricityValue
+            : legacyElectricityValue - defaultLighting;
+
+        baseState.hvacMinutes = normalizeValueByStep(
+          inferredHvacMinutes,
+          30
         );
       }
     }
@@ -164,7 +193,7 @@
   }
 
   function readRawStorage() {
-    const storageKey = window.CarbonTrackerConfig.STORAGE_KEY;
+    const storageKey = getStorageMeta().key;
 
     try {
       const raw = window.localStorage.getItem(storageKey);
@@ -178,39 +207,65 @@
     }
   }
 
-  function loadDailyRecords() {
-    const raw = readRawStorage();
+  function normalizeStoragePayload(raw) {
+    const currentVersion = getStorageMeta().version;
 
     if (!raw) {
-      return {};
+      return {
+        version: currentVersion,
+        dailyRecords: {},
+        migrated: false,
+      };
     }
 
     if (raw.dailyRecords && typeof raw.dailyRecords === "object") {
       const safeRecords = sanitizeDailyRecords(raw.dailyRecords);
-      if (isLegacySampleOnly(safeRecords)) {
-        return {};
-      }
+      const migratedRecords = isLegacySampleOnly(safeRecords) ? {} : safeRecords;
 
-      return safeRecords;
+      return {
+        version: currentVersion,
+        dailyRecords: migratedRecords,
+        migrated: Number(raw.version || 0) !== currentVersion,
+      };
     }
 
     const migratedState = sanitizeState(raw);
     if (isEmptyState(migratedState)) {
-      return {};
+      return {
+        version: currentVersion,
+        dailyRecords: {},
+        migrated: true,
+      };
     }
 
     const todayKey = getLocalDateKey(new Date());
     return {
-      [todayKey]: migratedState,
+      version: currentVersion,
+      dailyRecords: {
+        [todayKey]: migratedState,
+      },
+      migrated: true,
     };
   }
 
+  function loadDailyRecords() {
+    const raw = readRawStorage();
+    const normalized = normalizeStoragePayload(raw);
+
+    if (normalized.migrated) {
+      persistDailyRecords(normalized.dailyRecords);
+    }
+
+    return normalized.dailyRecords;
+  }
+
   function persistDailyRecords(dailyRecords) {
-    const storageKey = window.CarbonTrackerConfig.STORAGE_KEY;
+    const storageMeta = getStorageMeta();
     const safeRecords = sanitizeDailyRecords(dailyRecords);
     window.localStorage.setItem(
-      storageKey,
+      storageMeta.key,
       JSON.stringify({
+        version: storageMeta.version,
         dailyRecords: safeRecords,
       })
     );
@@ -240,7 +295,12 @@
     return persistDailyRecords(nextRecords);
   }
 
+  function clearAllData() {
+    window.localStorage.removeItem(getStorageMeta().key);
+  }
+
   window.CarbonTrackerStorage = {
+    clearAllData: clearAllData,
     clearStateForDate: clearStateForDate,
     getStateForDate: getStateForDate,
     isEmptyState: isEmptyState,

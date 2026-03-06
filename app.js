@@ -178,14 +178,14 @@
     if (!topItem && controllableCarbon === 0) {
       return {
         title: "기본 조명은 기준 사용으로 보고 있어요",
-        text: "지금은 추가 전기사용과 쓰레기 기록이 거의 없어서 좋은 상태예요.",
+        text: "지금은 에어컨·온풍기 사용과 쓰레기 기록이 거의 없어서 좋은 상태예요.",
       };
     }
 
     if (!topItem) {
       return {
         title: "기록을 시작해 보세요",
-        text: "쓰레기나 추가 전기사용을 기록하면 학생들이 줄일 수 있는 부분을 바로 알 수 있어요.",
+        text: "쓰레기나 에어컨·온풍기 사용을 기록하면 학생들이 줄일 수 있는 부분을 바로 알 수 있어요.",
       };
     }
 
@@ -253,9 +253,9 @@
       ? "오늘 기록을 수정하고 있어요"
       : formatShortDate(selectedDate) + " 기록을 수정하고 있어요";
     const descriptionText = isTodaySelected
-      ? "기본 조명 360분을 기준으로, 오늘의 쓰레기와 추가 전기사용을 입력하거나 고칠 수 있어요."
+      ? "기본 조명 360분을 기준으로, 오늘의 쓰레기와 에어컨·온풍기 사용을 입력하거나 고칠 수 있어요."
       : formatShortDate(selectedDate) +
-        "에 저장한 기록을 불러왔어요. 기본 조명 기준 위에 쓰레기와 추가 전기사용을 수정할 수 있어요.";
+        "에 저장한 기록을 불러왔어요. 기본 조명 기준 위에 쓰레기와 에어컨·온풍기 사용을 수정할 수 있어요.";
 
     document.getElementById("recordDate").value = selectedDateKey;
     document.getElementById("selectedDateTitle").textContent = titleText;
@@ -471,6 +471,7 @@
   function bindDateEvents() {
     const dateInput = document.getElementById("recordDate");
     const todayButton = document.getElementById("todayButton");
+    const clearAllButton = document.getElementById("clearAllButton");
 
     dateInput.max = todayKey;
     dateInput.addEventListener("change", function () {
@@ -480,6 +481,22 @@
 
     todayButton.addEventListener("click", function () {
       loadSelectedDate(todayKey);
+    });
+
+    clearAllButton.addEventListener("click", function () {
+      const shouldClear = window.confirm(
+        "이 브라우저에 저장된 모든 날짜 기록을 삭제할까요?"
+      );
+
+      if (!shouldClear) {
+        return;
+      }
+
+      storage.clearAllData();
+      dailyRecords = {};
+      selectedDateKey = todayKey;
+      state = storage.getStateForDate(todayKey, dailyRecords);
+      render();
     });
   }
 
