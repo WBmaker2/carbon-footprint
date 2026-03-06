@@ -10,8 +10,49 @@
     return year + "-" + month + "-" + day;
   }
 
-  function createSampleRecords() {
-    const templates = window.CarbonTrackerConfig.SAMPLE_RECORD_TEMPLATES || [];
+  function getLegacySampleRecords() {
+    const templates = [
+      {
+        offsetDays: 0,
+        state: {
+          plastic: 2,
+          paper: 4,
+          can: 1,
+          general: 1,
+          electricityMinutes: 20,
+        },
+      },
+      {
+        offsetDays: 1,
+        state: {
+          plastic: 1,
+          paper: 2,
+          can: 0,
+          general: 2,
+          electricityMinutes: 30,
+        },
+      },
+      {
+        offsetDays: 2,
+        state: {
+          plastic: 3,
+          paper: 1,
+          can: 1,
+          general: 0,
+          electricityMinutes: 10,
+        },
+      },
+      {
+        offsetDays: 3,
+        state: {
+          plastic: 0,
+          paper: 3,
+          can: 0,
+          general: 1,
+          electricityMinutes: 40,
+        },
+      },
+    ];
 
     return templates.reduce(function (records, template) {
       const date = new Date();
@@ -21,17 +62,52 @@
     }, {});
   }
 
-  function isEmptyState(state) {
+  function areSameState(leftState, rightState) {
     const items = window.CarbonTrackerConfig.ITEMS;
 
     return items.every(function (item) {
-      return Number(state[item.key] || 0) === 0;
+      return Number(leftState[item.key] || 0) === Number(rightState[item.key] || 0);
+    });
+  }
+
+  function isLegacySampleOnly(records) {
+    const legacyRecords = getLegacySampleRecords();
+    const recordKeys = Object.keys(records || {}).sort();
+    const legacyKeys = Object.keys(legacyRecords).sort();
+
+    if (recordKeys.length !== legacyKeys.length) {
+      return false;
+    }
+
+    return recordKeys.every(function (key, index) {
+      return (
+        key === legacyKeys[index] &&
+        areSameState(records[key], legacyRecords[key])
+      );
+    });
+  }
+
+  function isEmptyState(state) {
+    const defaultState = cloneDefaultState();
+    const items = window.CarbonTrackerConfig.ITEMS;
+
+    return items.every(function (item) {
+      return (
+        Number(state[item.key] || 0) === Number(defaultState[item.key] || 0)
+      );
     });
   }
 
   function sanitizeState(input) {
     const baseState = cloneDefaultState();
     const items = window.CarbonTrackerConfig.ITEMS;
+    const hasLegacyElectricityValue =
+      input &&
+      typeof input === "object" &&
+      Object.prototype.hasOwnProperty.call(input, "electricityMinutes");
+    const legacyElectricityValue = hasLegacyElectricityValue
+      ? Math.max(0, Number(input.electricityMinutes) || 0)
+      : 0;
 
     if (!input || typeof input !== "object") {
       return baseState;
@@ -49,6 +125,23 @@
       const normalizedValue = Math.round(numericValue / item.step) * item.step;
       baseState[item.key] = Math.max(0, normalizedValue);
     });
+
+    if (hasLegacyElectricityValue) {
+      const defaultLighting = Number(baseState.baseLightingMinutes || 0);
+
+      if (!Object.prototype.hasOwnProperty.call(input, "baseLightingMinutes")) {
+        baseState.baseLightingMinutes = defaultLighting;
+      }
+
+      if (
+        !Object.prototype.hasOwnProperty.call(input, "extraElectricityMinutes")
+      ) {
+        baseState.extraElectricityMinutes = Math.max(
+          0,
+          legacyElectricityValue - defaultLighting
+        );
+      }
+    }
 
     return baseState;
   }
@@ -89,17 +182,21 @@
     const raw = readRawStorage();
 
     if (!raw) {
-      return createSampleRecords();
+      return {};
     }
 
     if (raw.dailyRecords && typeof raw.dailyRecords === "object") {
       const safeRecords = sanitizeDailyRecords(raw.dailyRecords);
-      return Object.keys(safeRecords).length > 0 ? safeRecords : createSampleRecords();
+      if (isLegacySampleOnly(safeRecords)) {
+        return {};
+      }
+
+      return safeRecords;
     }
 
     const migratedState = sanitizeState(raw);
     if (isEmptyState(migratedState)) {
-      return createSampleRecords();
+      return {};
     }
 
     const todayKey = getLocalDateKey(new Date());

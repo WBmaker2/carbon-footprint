@@ -73,7 +73,7 @@
           </div>
 
           <p class="panel-note">
-            버튼을 눌러 항목별 수량을 기록하세요. 전기사용은 10분씩 더해져요.
+            기본 조명은 하루 360분으로 시작해요. 학생이 줄일 수 있는 건 쓰레기와 추가 전기사용이에요.
           </p>
 
           <div id="controlGrid" class="control-grid"></div>
@@ -89,19 +89,19 @@
 
           <div class="summary-grid">
             <article class="summary-card">
-              <span class="summary-label">총 입력 수량</span>
+              <span class="summary-label">학생 실천 수량</span>
               <strong id="totalCount">0</strong>
-              <p>전기 사용은 10분당 1단위로 계산해요.</p>
+              <p id="totalCountDescription">기본 조명은 제외하고 학생이 조절한 기록만 세어요.</p>
             </article>
             <article class="summary-card">
-              <span class="summary-label">예상 탄소 배출</span>
+              <span class="summary-label">전체 예상 탄소</span>
               <strong id="totalCarbon">0.00 kg</strong>
-              <p>항목별 탄소 환산값을 더한 결과예요.</p>
+              <p id="totalCarbonDescription">기본 조명과 추가 전기사용, 쓰레기를 모두 합친 값이에요.</p>
             </article>
             <article class="summary-card">
-              <span class="summary-label">가장 많은 항목</span>
+              <span class="summary-label">주요 실천 대상</span>
               <strong id="topItem">아직 없음</strong>
-              <p>오늘 가장 많이 기록한 활동을 보여줘요.</p>
+              <p id="topItemDescription">학생이 줄일 수 있는 항목 중 가장 많이 나온 것을 보여줘요.</p>
             </article>
             <article class="summary-card status-card">
               <span class="summary-label">에코 상태</span>
@@ -156,13 +156,13 @@
             <div class="panel-heading trend-heading">
               <div>
                 <p class="panel-kicker">주간 비교 그래프</p>
-                <h2>최근 7일 탄소 배출 추이</h2>
+                <h2>최근 7일 학생 실천 탄소 추이</h2>
               </div>
             </div>
             <div class="chart-wrap trend-wrap">
               <canvas
                 id="weeklyTrendChart"
-                aria-label="최근 7일 탄소 배출 선 그래프"
+                aria-label="최근 7일 학생 실천 탄소 선 그래프"
                 role="img"
               ></canvas>
             </div>

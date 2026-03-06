@@ -14,7 +14,7 @@
         }),
         datasets: [
           {
-            label: "입력값",
+            label: "기록 단위",
             data: items.map(function () {
               return 0;
             }),
@@ -42,7 +42,8 @@
             callbacks: {
               label: function (context) {
                 const item = items[context.dataIndex];
-                return item.label + ": " + context.raw + item.unit;
+                const originalValue = Number(context.raw) * item.step;
+                return item.label + ": " + originalValue + item.unit;
               },
             },
           },
@@ -68,7 +69,7 @@
             },
             title: {
               display: true,
-              text: "입력값",
+              text: "기록 단위",
               color: "#4e5d4f",
               font: {
                 size: 12,
@@ -91,7 +92,7 @@
 
     const items = window.CarbonTrackerConfig.ITEMS;
     chart.data.datasets[0].data = items.map(function (item) {
-      return state[item.key];
+      return state[item.key] / item.step;
     });
     chart.update();
   }
@@ -107,7 +108,7 @@
         labels: [],
         datasets: [
           {
-            label: "탄소 배출량",
+            label: "학생 실천 탄소",
             data: [],
             borderColor: "#1f7a5c",
             backgroundColor: "rgba(31, 122, 92, 0.14)",
@@ -136,7 +137,7 @@
             displayColors: false,
             callbacks: {
               label: function (context) {
-                return "탄소 배출량: " + Number(context.raw).toFixed(2) + " kg";
+                return "학생 실천 탄소: " + Number(context.raw).toFixed(2) + " kg";
               },
             },
           },
@@ -164,7 +165,7 @@
             },
             title: {
               display: true,
-              text: "탄소 배출량(kg)",
+              text: "학생 실천 탄소(kg)",
               color: "#4e5d4f",
               font: {
                 size: 12,

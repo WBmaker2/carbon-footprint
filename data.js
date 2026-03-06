@@ -41,83 +41,54 @@
       tip: "한 번 쓰고 버리는 물건을 줄이면 일반쓰레기도 줄어들어요.",
     },
     {
-      key: "electricityMinutes",
-      label: "전기사용",
+      key: "baseLightingMinutes",
+      label: "기본 조명",
+      unit: "분",
+      step: 30,
+      color: "#ffd54f",
+      carbonFactor: 0.0008,
+      defaultValue: 360,
+      affectsEcoStatus: false,
+      description: "하루 수업 기준 조명 사용 시간을 기록해요. 기본값은 6시간이에요.",
+      tip: "기본 조명은 수업 운영에 필요한 기준 사용으로 보고 있어요.",
+    },
+    {
+      key: "extraElectricityMinutes",
+      label: "추가 전기사용",
       unit: "분",
       step: 10,
-      color: "#ffd54f",
-      carbonFactor: 0.02,
-      description: "조명이나 전자기기를 사용한 시간을 10분씩 기록해요.",
-      tip: "사용하지 않는 전자기기는 바로 끄는 습관이 중요해요.",
+      color: "#f08c3a",
+      carbonFactor: 0.0015,
+      defaultValue: 0,
+      affectsEcoStatus: true,
+      description: "전자칠판, 프로젝터, 선풍기처럼 추가로 쓴 전기 시간을 기록해요.",
+      tip: "쉬는 시간이나 사용하지 않을 때 전자기기를 끄면 추가 전기를 줄일 수 있어요.",
     },
   ];
 
   const DEFAULT_STATE = ITEMS.reduce(function (acc, item) {
-    acc[item.key] = 0;
+    acc[item.key] = item.defaultValue || 0;
     return acc;
   }, {});
 
   const ECO_LEVELS = [
     {
-      maxCarbon: 1.5,
+      maxCarbon: 0.8,
       label: "좋음",
       className: "good",
-      description: "오늘은 비교적 친환경적인 교실 활동을 하고 있어요.",
+      description: "학생들이 조절할 수 있는 쓰레기와 추가 전기사용이 잘 관리되고 있어요.",
     },
     {
-      maxCarbon: 3.5,
+      maxCarbon: 1.8,
       label: "보통",
       className: "normal",
-      description: "조금만 더 줄이면 더 친환경적인 하루가 될 수 있어요.",
+      description: "기본 조명은 괜찮아요. 쓰레기나 추가 전기사용을 조금 더 줄여 보면 좋아요.",
     },
     {
       maxCarbon: Number.POSITIVE_INFINITY,
       label: "주의",
       className: "alert",
-      description: "쓰레기와 전기 사용을 다시 살펴볼 필요가 있어요.",
-    },
-  ];
-
-  const SAMPLE_RECORD_TEMPLATES = [
-    {
-      offsetDays: 0,
-      state: {
-        plastic: 2,
-        paper: 4,
-        can: 1,
-        general: 1,
-        electricityMinutes: 20,
-      },
-    },
-    {
-      offsetDays: 1,
-      state: {
-        plastic: 1,
-        paper: 2,
-        can: 0,
-        general: 2,
-        electricityMinutes: 30,
-      },
-    },
-    {
-      offsetDays: 2,
-      state: {
-        plastic: 3,
-        paper: 1,
-        can: 1,
-        general: 0,
-        electricityMinutes: 10,
-      },
-    },
-    {
-      offsetDays: 3,
-      state: {
-        plastic: 0,
-        paper: 3,
-        can: 0,
-        general: 1,
-        electricityMinutes: 40,
-      },
+      description: "추가 전기사용이나 쓰레기 발생이 많아요. 줄일 수 있는 부분을 다시 살펴보세요.",
     },
   ];
 
@@ -126,7 +97,6 @@
     DEFAULT_STATE: DEFAULT_STATE,
     ECO_LEVELS: ECO_LEVELS,
     HISTORY_DAYS: 7,
-    SAMPLE_RECORD_TEMPLATES: SAMPLE_RECORD_TEMPLATES,
     STORAGE_KEY: "carbon-tracker-mvp-v1",
   };
 })();

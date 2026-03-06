@@ -62,51 +62,77 @@
     });
   }
 
-  function getTotalCount(currentState) {
-    return config.ITEMS.reduce(function (total, item) {
-      if (item.key === "electricityMinutes") {
-        return total + currentState[item.key] / item.step;
-      }
+  function getControllableItems() {
+    return config.ITEMS.filter(function (item) {
+      return item.affectsEcoStatus !== false;
+    });
+  }
 
-      return total + currentState[item.key];
+  function getDefaultValue(item) {
+    return Number(config.DEFAULT_STATE[item.key] || 0);
+  }
+
+  function getComparableValue(item, currentState) {
+    const normalizedValue = Number(currentState[item.key] || 0) / item.step;
+    const normalizedDefault = getDefaultValue(item) / item.step;
+    return Math.max(0, normalizedValue - normalizedDefault);
+  }
+
+  function getStudentActionCount(currentState) {
+    return getControllableItems().reduce(function (total, item) {
+      return total + getComparableValue(item, currentState);
     }, 0);
   }
 
   function getTotalCarbon(currentState) {
     return config.ITEMS.reduce(function (total, item) {
-      return total + currentState[item.key] * item.carbonFactor;
+      return total + Number(currentState[item.key] || 0) * item.carbonFactor;
     }, 0);
+  }
+
+  function getControllableCarbon(currentState) {
+    return getControllableItems().reduce(function (total, item) {
+      return total + Number(currentState[item.key] || 0) * item.carbonFactor;
+    }, 0);
+  }
+
+  function getBaselineLightingCarbon(currentState) {
+    const lightingItem = getItemByKey("baseLightingMinutes");
+    if (!lightingItem) {
+      return 0;
+    }
+
+    return Number(currentState[lightingItem.key] || 0) * lightingItem.carbonFactor;
   }
 
   function getTopItem(currentState) {
     let topItem = null;
+    let topValue = -1;
 
-    config.ITEMS.forEach(function (item) {
-      const currentComparableValue = currentState[item.key] / item.step;
-      const topComparableValue = topItem
-        ? currentState[topItem.key] / topItem.step
-        : -1;
+    getControllableItems().forEach(function (item) {
+      const comparableValue = getComparableValue(item, currentState);
 
-      if (!topItem || currentComparableValue > topComparableValue) {
+      if (comparableValue > topValue) {
         topItem = item;
+        topValue = comparableValue;
       }
     });
 
-    if (!topItem || currentState[topItem.key] === 0) {
+    if (!topItem || topValue <= 0) {
       return null;
     }
 
     return topItem;
   }
 
-  function getEcoLevel(totalCarbon) {
+  function getEcoLevel(controllableCarbon) {
     return config.ECO_LEVELS.find(function (level) {
-      return totalCarbon <= level.maxCarbon;
+      return controllableCarbon <= level.maxCarbon;
     });
   }
 
   function getTopItemFromRecords(records) {
-    const totalsByItem = config.ITEMS.reduce(function (acc, item) {
+    const totalsByItem = getControllableItems().reduce(function (acc, item) {
       acc[item.key] = 0;
       return acc;
     }, {});
@@ -114,15 +140,15 @@
     Object.keys(records).forEach(function (dateKey) {
       const currentState = records[dateKey];
 
-      config.ITEMS.forEach(function (item) {
-        totalsByItem[item.key] += currentState[item.key] / item.step;
+      getControllableItems().forEach(function (item) {
+        totalsByItem[item.key] += getComparableValue(item, currentState);
       });
     });
 
     let topItem = null;
     let topValue = -1;
 
-    config.ITEMS.forEach(function (item) {
+    getControllableItems().forEach(function (item) {
       if (totalsByItem[item.key] > topValue) {
         topItem = item;
         topValue = totalsByItem[item.key];
@@ -148,24 +174,31 @@
     });
   }
 
-  function getTip(topItem, totalCarbon) {
-    if (!topItem) {
+  function getTip(topItem, controllableCarbon) {
+    if (!topItem && controllableCarbon === 0) {
       return {
-        title: "기록을 시작해 보세요",
-        text: "첫 기록을 남기면 우리 반이 어떤 활동에서 탄소를 만들고 있는지 바로 알 수 있어요.",
+        title: "기본 조명은 기준 사용으로 보고 있어요",
+        text: "지금은 추가 전기사용과 쓰레기 기록이 거의 없어서 좋은 상태예요.",
       };
     }
 
-    if (totalCarbon >= 3.5) {
+    if (!topItem) {
       return {
-        title: "줄일 수 있는 부분을 찾아보세요",
-        text: topItem.tip + " " + topItem.label + " 항목부터 줄여 보면 좋아요.",
+        title: "기록을 시작해 보세요",
+        text: "쓰레기나 추가 전기사용을 기록하면 학생들이 줄일 수 있는 부분을 바로 알 수 있어요.",
+      };
+    }
+
+    if (controllableCarbon >= 1.8) {
+      return {
+        title: "학생이 줄일 수 있는 부분을 찾아보세요",
+        text: topItem.tip + " 오늘은 " + topItem.label + "부터 줄여 보면 좋아요.",
       };
     }
 
     return {
       title: "잘 살펴보고 있어요",
-      text: topItem.tip + " 지금처럼 기록하면서 변화를 비교해 보세요.",
+      text: topItem.tip + " 지금처럼 학생이 줄일 수 있는 부분을 계속 비교해 보세요.",
     };
   }
 
@@ -220,8 +253,9 @@
       ? "오늘 기록을 수정하고 있어요"
       : formatShortDate(selectedDate) + " 기록을 수정하고 있어요";
     const descriptionText = isTodaySelected
-      ? "오늘의 교실 기록을 입력하거나 고칠 수 있어요."
-      : formatShortDate(selectedDate) + "에 저장한 기록을 불러와서 수정할 수 있어요.";
+      ? "기본 조명 360분을 기준으로, 오늘의 쓰레기와 추가 전기사용을 입력하거나 고칠 수 있어요."
+      : formatShortDate(selectedDate) +
+        "에 저장한 기록을 불러왔어요. 기본 조명 기준 위에 쓰레기와 추가 전기사용을 수정할 수 있어요.";
 
     document.getElementById("recordDate").value = selectedDateKey;
     document.getElementById("selectedDateTitle").textContent = titleText;
@@ -242,15 +276,34 @@
 
   function updateSummary() {
     const totalCarbon = getTotalCarbon(state);
+    const controllableCarbon = getControllableCarbon(state);
+    const baselineLightingCarbon = getBaselineLightingCarbon(state);
     const topItem = getTopItem(state);
-    const ecoLevel = getEcoLevel(totalCarbon);
-    const tip = getTip(topItem, totalCarbon);
+    const ecoLevel = getEcoLevel(controllableCarbon);
+    const tip = getTip(topItem, controllableCarbon);
 
-    document.getElementById("totalCount").textContent = String(getTotalCount(state));
+    document.getElementById("totalCount").textContent = String(
+      getStudentActionCount(state)
+    );
+    document.getElementById("totalCountDescription").textContent =
+      "기본 조명은 제외하고 학생이 줄이거나 조절할 수 있는 기록만 세어요.";
     document.getElementById("totalCarbon").textContent = totalCarbon.toFixed(2) + " kg";
-    document.getElementById("topItem").textContent = topItem ? topItem.label : "아직 없음";
+    document.getElementById("totalCarbonDescription").textContent =
+      "기본 조명 " +
+      baselineLightingCarbon.toFixed(2) +
+      "kg를 포함한 전체 예상 탄소예요.";
+    document.getElementById("topItem").textContent = topItem
+      ? topItem.label
+      : "아직 없음";
+    document.getElementById("topItemDescription").textContent = topItem
+      ? "학생이 줄일 수 있는 항목 중 " + topItem.label + "이 가장 많이 나왔어요."
+      : "기본 조명은 기준 사용으로 보고 있어요. 추가 사용이나 쓰레기가 거의 없어요.";
     document.getElementById("ecoStatus").textContent = ecoLevel.label;
-    document.getElementById("statusDescription").textContent = ecoLevel.description;
+    document.getElementById("statusDescription").textContent =
+      ecoLevel.description +
+      " 학생 실천 탄소는 " +
+      controllableCarbon.toFixed(2) +
+      "kg로 계산했어요.";
     document.getElementById("tipTitle").textContent = tip.title;
     document.getElementById("tipText").textContent = tip.text;
 
@@ -288,8 +341,9 @@
     recentRecords.forEach(function (entry) {
       const item = document.createElement("button");
       const entryTopItem = getTopItem(entry.state);
-      const totalCount = getTotalCount(entry.state);
+      const totalCount = getStudentActionCount(entry.state);
       const totalCarbon = getTotalCarbon(entry.state);
+      const controllableCarbon = getControllableCarbon(entry.state);
       const isEmpty = storage.isEmptyState(entry.state);
       const isActive = entry.dateKey === selectedDateKey;
 
@@ -307,12 +361,18 @@
         "  <p>" +
         (isEmpty
           ? "기록이 없어요. 눌러서 새로 입력할 수 있어요."
-          : "총 " +
-            totalCount +
-            "단위 · " +
-            totalCarbon.toFixed(2) +
-            "kg · 최다 항목: " +
-            entryTopItem.label) +
+          : entryTopItem
+            ? "실천 " +
+              totalCount +
+              "단위 · 전체 " +
+              totalCarbon.toFixed(2) +
+              "kg · 주요 대상: " +
+              entryTopItem.label
+            : "기본 조명 중심 · 전체 " +
+              totalCarbon.toFixed(2) +
+              "kg · 학생 실천 탄소 " +
+              controllableCarbon.toFixed(2) +
+              "kg") +
         "</p>" +
         "</div>" +
         '<div class="history-value">' +
@@ -320,7 +380,7 @@
           ? "선택 중"
           : isEmpty
             ? "기록 없음"
-            : totalCarbon.toFixed(2) + " kg") +
+            : controllableCarbon.toFixed(2) + " kg") +
         "</div>";
 
       historyList.appendChild(item);
@@ -336,7 +396,7 @@
       .slice()
       .reverse()
       .map(function (entry) {
-        return Number(getTotalCarbon(entry.state).toFixed(2));
+        return Number(getControllableCarbon(entry.state).toFixed(2));
       });
 
     chartApi.updateWeeklyTrendChart(weeklyTrendChartInstance, trendLabels, trendValues);
@@ -366,7 +426,7 @@
       return;
     }
 
-    state[key] = Math.max(0, state[key] + delta);
+    state[key] = Math.max(0, Number(state[key] || 0) + delta);
     persistSelectedState();
     render();
   }
