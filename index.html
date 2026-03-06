@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>에코 체크: 우리 교실 탄소 발자국</title>
+    <meta
+      name="description"
+      content="교실에서 발생하는 쓰레기와 전기 사용량을 기록하고 실시간으로 탄소 발자국을 확인하는 환경 교육용 대시보드"
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%231f7a5c'/%3E%3Cpath d='M18 34c10-2 17-11 28-14-2 12-11 21-23 24-4 1-8-2-8-6 0-2 1-3 3-4Z' fill='%23f6efe4'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">과학 · 실과 환경 교육 활동</p>
+          <h1>에코 체크: 우리 교실 탄소 발자국</h1>
+          <p class="hero-text">
+            오늘 우리 반이 만든 쓰레기와 전기 사용량을 기록하고,
+            그래프로 탄소 배출 변화를 바로 확인해요.
+          </p>
+        </div>
+        <div class="hero-meta">
+          <div class="hero-badge">
+            <span class="badge-label">오늘 날짜</span>
+            <strong id="todayDate">-</strong>
+          </div>
+          <div class="hero-badge">
+            <span class="badge-label">연계 성취기준</span>
+            <strong class="achievement-text">
+              [4과15-02] 환경 보존의 필요성을 알고 생활 속에서 환경 보호를 실천한다.
+            </strong>
+          </div>
+        </div>
+      </header>
+
+      <section class="panel date-panel">
+        <div class="panel-heading date-panel-heading">
+          <div>
+            <p class="panel-kicker">기록 날짜 선택</p>
+            <h2 id="selectedDateTitle">선택한 날짜 기록</h2>
+          </div>
+          <div class="date-controls">
+            <label class="date-picker" for="recordDate">
+              <span>날짜</span>
+              <input id="recordDate" type="date" />
+            </label>
+            <button id="todayButton" class="ghost-button" type="button">
+              오늘로 이동
+            </button>
+          </div>
+        </div>
+        <p id="selectedDateDescription" class="panel-note">
+          선택한 날짜의 기록을 수정할 수 있어요.
+        </p>
+      </section>
+
+      <main class="dashboard-layout">
+        <section class="panel panel-input">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">입력 패널</p>
+              <h2>선택한 날짜의 교실 기록</h2>
+            </div>
+            <button id="resetButton" class="reset-button" type="button">
+              선택 날짜 기록 초기화
+            </button>
+          </div>
+
+          <p class="panel-note">
+            버튼을 눌러 항목별 수량을 기록하세요. 전기사용은 10분씩 더해져요.
+          </p>
+
+          <div id="controlGrid" class="control-grid"></div>
+        </section>
+
+        <section class="panel panel-summary">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">오늘의 대시보드</p>
+              <h2>탄소 발자국 요약</h2>
+            </div>
+          </div>
+
+          <div class="summary-grid">
+            <article class="summary-card">
+              <span class="summary-label">총 입력 수량</span>
+              <strong id="totalCount">0</strong>
+              <p>전기 사용은 10분당 1단위로 계산해요.</p>
+            </article>
+            <article class="summary-card">
+              <span class="summary-label">예상 탄소 배출</span>
+              <strong id="totalCarbon">0.00 kg</strong>
+              <p>항목별 탄소 환산값을 더한 결과예요.</p>
+            </article>
+            <article class="summary-card">
+              <span class="summary-label">가장 많은 항목</span>
+              <strong id="topItem">아직 없음</strong>
+              <p>오늘 가장 많이 기록한 활동을 보여줘요.</p>
+            </article>
+            <article class="summary-card status-card">
+              <span class="summary-label">에코 상태</span>
+              <strong id="ecoStatus">좋음</strong>
+              <p id="statusDescription">기록을 시작하면 우리 반의 상태를 알려줘요.</p>
+            </article>
+          </div>
+        </section>
+      </main>
+
+      <section class="panel chart-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="panel-kicker">선택 날짜 그래프</p>
+            <h2>항목별 기록 현황</h2>
+          </div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="carbonChart" aria-label="항목별 기록 막대 그래프" role="img"></canvas>
+        </div>
+        <p id="chartFallback" class="chart-fallback" hidden>
+          Chart.js를 불러오지 못해 그래프를 표시할 수 없어요.
+        </p>
+      </section>
+
+      <section class="insights-layout">
+        <section class="panel weekly-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">주간 기록</p>
+              <h2>최근 7일 요약</h2>
+            </div>
+          </div>
+          <div class="summary-grid weekly-grid">
+            <article class="summary-card">
+              <span class="summary-label">기록한 날짜</span>
+              <strong id="weeklyActiveDays">0일</strong>
+              <p>오늘을 포함한 최근 7일 중 기록이 남아 있는 날짜예요.</p>
+            </article>
+            <article class="summary-card">
+              <span class="summary-label">주간 탄소 합계</span>
+              <strong id="weeklyCarbon">0.00 kg</strong>
+              <p>최근 7일 동안 누적된 탄소 배출량이에요.</p>
+            </article>
+            <article class="summary-card">
+              <span class="summary-label">주간 최다 활동</span>
+              <strong id="weeklyTopItem">아직 없음</strong>
+              <p>이번 주에 가장 많이 기록된 항목을 보여줘요.</p>
+            </article>
+          </div>
+          <div class="trend-block">
+            <div class="panel-heading trend-heading">
+              <div>
+                <p class="panel-kicker">주간 비교 그래프</p>
+                <h2>최근 7일 탄소 배출 추이</h2>
+              </div>
+            </div>
+            <div class="chart-wrap trend-wrap">
+              <canvas
+                id="weeklyTrendChart"
+                aria-label="최근 7일 탄소 배출 선 그래프"
+                role="img"
+              ></canvas>
+            </div>
+            <p id="trendFallback" class="chart-fallback" hidden>
+              Chart.js를 불러오지 못해 주간 그래프를 표시할 수 없어요.
+            </p>
+          </div>
+        </section>
+
+        <section class="panel history-list-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">날짜별 히스토리</p>
+              <h2>최근 7일 기록 수정하기</h2>
+            </div>
+          </div>
+          <p class="panel-note">
+            목록을 누르면 그 날짜 기록을 불러와서 바로 수정할 수 있어요.
+          </p>
+          <div id="historyList" class="history-list"></div>
+        </section>
+      </section>
+
+      <section class="panel tip-panel">
+        <div class="tip-copy">
+          <p class="panel-kicker">오늘의 한마디</p>
+          <h2 id="tipTitle">기록을 시작해 보세요</h2>
+          <p id="tipText">
+            우리 반이 어떤 활동에서 탄소를 가장 많이 만들고 있는지 살펴볼 수 있어요.
+          </p>
+        </div>
+      </section>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="./data.js"></script>
+    <script src="./storage.js"></script>
+    <script src="./chart.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
