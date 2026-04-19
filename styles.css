@@ -211,6 +211,17 @@ canvas {
   line-height: 1.6;
 }
 
+.storage-status {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(217, 93, 57, 0.2);
+  border-radius: 14px;
+  background: rgba(217, 93, 57, 0.1);
+  color: #9b3b22;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
 .control-grid {
   display: grid;
   gap: 14px;

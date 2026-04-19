@@ -3,9 +3,8 @@
   const storage = window.CarbonTrackerStorage;
   const chartApi = window.CarbonTrackerChart;
 
-  const today = new Date();
-  const todayKey = getDateKey(today);
-  let selectedDateKey = todayKey;
+  let lastKnownTodayKey = getTodayKey();
+  let selectedDateKey = lastKnownTodayKey;
   let dailyRecords = storage.loadDailyRecords();
   let state = storage.getStateForDate(selectedDateKey, dailyRecords);
   let dailyChartInstance = null;
@@ -39,6 +38,14 @@
     return year + "-" + month + "-" + day;
   }
 
+  function getToday() {
+    return new Date();
+  }
+
+  function getTodayKey() {
+    return getDateKey(getToday());
+  }
+
   function getDateFromKey(dateKey) {
     const parts = dateKey.split("-").map(Number);
     return new Date(parts[0], parts[1] - 1, parts[2]);
@@ -46,6 +53,7 @@
 
   function getLastNDates(count) {
     const dates = [];
+    const today = getToday();
 
     for (let index = 0; index < count; index += 1) {
       const date = new Date(today);
@@ -202,37 +210,50 @@
     };
   }
 
+  function createElement(tagName, className, textContent) {
+    const element = document.createElement(tagName);
+
+    if (className) {
+      element.className = className;
+    }
+
+    if (textContent !== undefined) {
+      element.textContent = textContent;
+    }
+
+    return element;
+  }
+
   function createControlCard(item) {
     const wrapper = document.createElement("article");
+    const controlCopy = createElement("div", "control-copy");
+    const controlTitle = createElement("div", "control-title");
+    const controlSwatch = createElement("span", "control-swatch");
+    const title = createElement("strong", "", item.label);
+    const description = createElement("p", "", item.description);
+    const controlActions = createElement("div", "control-actions");
+    const decreaseButton = createElement("button", "action-button decrease-button", "−");
+    const valueChip = createElement("div", "value-chip");
+    const increaseButton = createElement("button", "action-button increase-button", "+");
+
     wrapper.className = "control-card";
-    wrapper.innerHTML =
-      '<div class="control-copy">' +
-      '  <div class="control-title">' +
-      '    <span class="control-swatch" aria-hidden="true"></span>' +
-      "    <strong></strong>" +
-      "  </div>" +
-      "  <p></p>" +
-      "</div>" +
-      '<div class="control-actions">' +
-      '  <button class="action-button decrease-button" type="button" aria-label=""></button>' +
-      '  <div class="value-chip" aria-live="polite"></div>' +
-      '  <button class="action-button increase-button" type="button" aria-label=""></button>' +
-      "</div>";
-
     wrapper.dataset.key = item.key;
-    wrapper.querySelector(".control-swatch").style.backgroundColor = item.color;
-    wrapper.querySelector(".control-title strong").textContent = item.label;
-    wrapper.querySelector(".control-copy p").textContent = item.description;
 
-    const decreaseButton = wrapper.querySelector(".decrease-button");
-    const increaseButton = wrapper.querySelector(".increase-button");
+    controlSwatch.setAttribute("aria-hidden", "true");
+    controlSwatch.style.backgroundColor = item.color;
+    controlTitle.append(controlSwatch, title);
+    controlCopy.append(controlTitle, description);
 
-    decreaseButton.textContent = "−";
-    increaseButton.textContent = "+";
+    decreaseButton.type = "button";
+    increaseButton.type = "button";
+    valueChip.setAttribute("aria-live", "polite");
     decreaseButton.style.backgroundColor = item.color;
     increaseButton.style.backgroundColor = item.color;
     decreaseButton.setAttribute("aria-label", item.label + " 줄이기");
     increaseButton.setAttribute("aria-label", item.label + " 늘리기");
+    controlActions.append(decreaseButton, valueChip, increaseButton);
+
+    wrapper.append(controlCopy, controlActions);
 
     return wrapper;
   }
@@ -246,8 +267,27 @@
     });
   }
 
+  function updateStorageStatus() {
+    const statusElement = document.getElementById("storageStatus");
+    if (!statusElement || !storage.getLastStorageError) {
+      return;
+    }
+
+    const storageError = storage.getLastStorageError();
+    if (!storageError) {
+      statusElement.hidden = true;
+      statusElement.textContent = "";
+      return;
+    }
+
+    statusElement.hidden = false;
+    statusElement.textContent =
+      "브라우저 저장소에 기록을 저장하지 못했어요. 페이지를 닫거나 새로고침하면 방금 바꾼 내용이 사라질 수 있어요.";
+  }
+
   function updateSelectedDateUI() {
     const selectedDate = getDateFromKey(selectedDateKey);
+    const todayKey = getTodayKey();
     const isTodaySelected = selectedDateKey === todayKey;
     const titleText = isTodaySelected
       ? "오늘 기록을 수정하고 있어요"
@@ -257,7 +297,9 @@
       : formatShortDate(selectedDate) +
         "에 저장한 기록을 불러왔어요. 기본 조명 기준 위에 쓰레기와 에어컨·온풍기 사용을 수정할 수 있어요.";
 
-    document.getElementById("recordDate").value = selectedDateKey;
+    const dateInput = document.getElementById("recordDate");
+    dateInput.max = todayKey;
+    dateInput.value = selectedDateKey;
     document.getElementById("selectedDateTitle").textContent = titleText;
     document.getElementById("selectedDateDescription").textContent = descriptionText;
   }
@@ -312,6 +354,74 @@
     statusCard.classList.add(ecoLevel.className);
   }
 
+  function getHistoryDescription(entryTopItem, totalCount, totalCarbon, controllableCarbon, isEmpty) {
+    if (isEmpty) {
+      return "기록이 없어요. 눌러서 새로 입력할 수 있어요.";
+    }
+
+    if (entryTopItem) {
+      return (
+        "실천 " +
+        totalCount +
+        "단위 · 전체 " +
+        totalCarbon.toFixed(2) +
+        "kg · 주요 대상: " +
+        entryTopItem.label
+      );
+    }
+
+    return (
+      "기본 조명 중심 · 전체 " +
+      totalCarbon.toFixed(2) +
+      "kg · 학생 실천 탄소 " +
+      controllableCarbon.toFixed(2) +
+      "kg"
+    );
+  }
+
+  function createHistoryItem(entry) {
+    const item = document.createElement("button");
+    const entryTopItem = getTopItem(entry.state);
+    const totalCount = getStudentActionCount(entry.state);
+    const totalCarbon = getTotalCarbon(entry.state);
+    const controllableCarbon = getControllableCarbon(entry.state);
+    const isEmpty = storage.isEmptyState(entry.state);
+    const isActive = entry.dateKey === selectedDateKey;
+    const details = createElement("div");
+    const title = createElement("h3", "", formatShortDate(entry.date));
+    const description = createElement(
+      "p",
+      "",
+      getHistoryDescription(
+        entryTopItem,
+        totalCount,
+        totalCarbon,
+        controllableCarbon,
+        isEmpty
+      )
+    );
+    const historyValue = createElement(
+      "div",
+      "history-value",
+      isActive
+        ? "선택 중"
+        : isEmpty
+          ? "기록 없음"
+          : controllableCarbon.toFixed(2) + " kg"
+    );
+
+    item.type = "button";
+    item.className =
+      "history-item" +
+      (isEmpty ? " empty" : "") +
+      (isActive ? " active" : "");
+    item.dataset.dateKey = entry.dateKey;
+    details.append(title, description);
+    item.append(details, historyValue);
+
+    return item;
+  }
+
   function renderHistory() {
     const recentRecords = getRecentRecords();
     const activeRecords = recentRecords.filter(function (entry) {
@@ -339,51 +449,7 @@
     historyList.innerHTML = "";
 
     recentRecords.forEach(function (entry) {
-      const item = document.createElement("button");
-      const entryTopItem = getTopItem(entry.state);
-      const totalCount = getStudentActionCount(entry.state);
-      const totalCarbon = getTotalCarbon(entry.state);
-      const controllableCarbon = getControllableCarbon(entry.state);
-      const isEmpty = storage.isEmptyState(entry.state);
-      const isActive = entry.dateKey === selectedDateKey;
-
-      item.type = "button";
-      item.className =
-        "history-item" +
-        (isEmpty ? " empty" : "") +
-        (isActive ? " active" : "");
-      item.dataset.dateKey = entry.dateKey;
-      item.innerHTML =
-        "<div>" +
-        "  <h3>" +
-        formatShortDate(entry.date) +
-        "</h3>" +
-        "  <p>" +
-        (isEmpty
-          ? "기록이 없어요. 눌러서 새로 입력할 수 있어요."
-          : entryTopItem
-            ? "실천 " +
-              totalCount +
-              "단위 · 전체 " +
-              totalCarbon.toFixed(2) +
-              "kg · 주요 대상: " +
-              entryTopItem.label
-            : "기본 조명 중심 · 전체 " +
-              totalCarbon.toFixed(2) +
-              "kg · 학생 실천 탄소 " +
-              controllableCarbon.toFixed(2) +
-              "kg") +
-        "</p>" +
-        "</div>" +
-        '<div class="history-value">' +
-        (isActive
-          ? "선택 중"
-          : isEmpty
-            ? "기록 없음"
-            : controllableCarbon.toFixed(2) + " kg") +
-        "</div>";
-
-      historyList.appendChild(item);
+      historyList.appendChild(createHistoryItem(entry));
     });
 
     const trendLabels = recentRecords
@@ -404,6 +470,7 @@
 
   function render() {
     updateSelectedDateUI();
+    updateStorageStatus();
     updateControlValues();
     updateSummary();
     renderHistory();
@@ -473,14 +540,14 @@
     const todayButton = document.getElementById("todayButton");
     const clearAllButton = document.getElementById("clearAllButton");
 
-    dateInput.max = todayKey;
     dateInput.addEventListener("change", function () {
-      const nextDateKey = dateInput.value || todayKey;
-      loadSelectedDate(nextDateKey > todayKey ? todayKey : nextDateKey);
+      const currentTodayKey = getTodayKey();
+      const nextDateKey = dateInput.value || currentTodayKey;
+      loadSelectedDate(nextDateKey > currentTodayKey ? currentTodayKey : nextDateKey);
     });
 
     todayButton.addEventListener("click", function () {
-      loadSelectedDate(todayKey);
+      loadSelectedDate(getTodayKey());
     });
 
     clearAllButton.addEventListener("click", function () {
@@ -492,10 +559,15 @@
         return;
       }
 
-      storage.clearAllData();
+      const didClear = storage.clearAllData();
+      if (!didClear) {
+        render();
+        return;
+      }
+
       dailyRecords = {};
-      selectedDateKey = todayKey;
-      state = storage.getStateForDate(todayKey, dailyRecords);
+      selectedDateKey = getTodayKey();
+      state = storage.getStateForDate(selectedDateKey, dailyRecords);
       render();
     });
   }
@@ -506,6 +578,32 @@
       state = Object.assign({}, config.DEFAULT_STATE);
       dailyRecords = storage.clearStateForDate(selectedDateKey, dailyRecords);
       render();
+    });
+  }
+
+  function refreshTodayBoundary() {
+    const currentTodayKey = getTodayKey();
+
+    if (lastKnownTodayKey === currentTodayKey) {
+      return;
+    }
+
+    lastKnownTodayKey = currentTodayKey;
+    if (selectedDateKey > currentTodayKey) {
+      selectedDateKey = currentTodayKey;
+      state = storage.getStateForDate(selectedDateKey, dailyRecords);
+    }
+
+    initDate();
+    render();
+  }
+
+  function bindTodayBoundaryEvents() {
+    window.addEventListener("focus", refreshTodayBoundary);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) {
+        refreshTodayBoundary();
+      }
     });
   }
 
@@ -538,6 +636,7 @@
     bindHistoryEvents();
     bindDateEvents();
     bindResetEvent();
+    bindTodayBoundaryEvents();
     initCharts();
     render();
   }
