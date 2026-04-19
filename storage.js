@@ -1,4 +1,22 @@
 (function () {
+  let lastStorageError = null;
+
+  function setStorageError(action, error) {
+    lastStorageError = {
+      action: action,
+      name: error && error.name ? error.name : "StorageError",
+      message: error && error.message ? error.message : "브라우저 저장소를 사용할 수 없습니다.",
+    };
+  }
+
+  function clearStorageError() {
+    lastStorageError = null;
+  }
+
+  function getLastStorageError() {
+    return lastStorageError ? Object.assign({}, lastStorageError) : null;
+  }
+
   function getStorageMeta() {
     return {
       key: window.CarbonTrackerConfig.STORAGE_KEY,
@@ -262,13 +280,20 @@
   function persistDailyRecords(dailyRecords) {
     const storageMeta = getStorageMeta();
     const safeRecords = sanitizeDailyRecords(dailyRecords);
-    window.localStorage.setItem(
-      storageMeta.key,
-      JSON.stringify({
-        version: storageMeta.version,
-        dailyRecords: safeRecords,
-      })
-    );
+
+    try {
+      window.localStorage.setItem(
+        storageMeta.key,
+        JSON.stringify({
+          version: storageMeta.version,
+          dailyRecords: safeRecords,
+        })
+      );
+      clearStorageError();
+    } catch (error) {
+      setStorageError("save", error);
+    }
+
     return safeRecords;
   }
 
@@ -296,12 +321,21 @@
   }
 
   function clearAllData() {
-    window.localStorage.removeItem(getStorageMeta().key);
+    try {
+      window.localStorage.removeItem(getStorageMeta().key);
+      clearStorageError();
+      return true;
+    } catch (error) {
+      setStorageError("clear", error);
+      return false;
+    }
   }
 
   window.CarbonTrackerStorage = {
     clearAllData: clearAllData,
+    clearStorageError: clearStorageError,
     clearStateForDate: clearStateForDate,
+    getLastStorageError: getLastStorageError,
     getStateForDate: getStateForDate,
     isEmptyState: isEmptyState,
     loadDailyRecords: loadDailyRecords,

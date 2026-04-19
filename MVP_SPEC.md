@@ -120,6 +120,14 @@ const ITEMS = {
 };
 ```
 
+### 현재 구현 메모
+현재 구현은 MVP 초안의 `electricityMinutes`를 그대로 쓰지 않고, 전기 사용을 아래 두 항목으로 분리한다.
+
+- `baseLightingMinutes`: 기본 조명 사용 시간. 기본값은 360분이며 전체 예상 탄소에는 포함하지만, 학생이 줄일 수 있는 실천 수량과 에코 상태 계산에서는 제외한다.
+- `hvacMinutes`: 에어컨/온풍기 사용 시간. 30분 단위로 증감하며 학생 실천 수량, 주요 실천 대상, 에코 상태 계산에 포함한다.
+
+기존 `electricityMinutes` 또는 `extraElectricityMinutes` 저장값은 `storage.js`에서 현재 모델로 변환한다.
+
 ## 7. 핵심 기능 구조
 ### 입력 처리
 - 버튼 클릭 시 항목 값 증감
