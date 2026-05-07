@@ -6,7 +6,7 @@
 
 ## 현재 상태
 
-- 앱은 [index.html](/Volumes/DATA/Dev/Codex/carbon-footprint/index.html), [app.js](/Volumes/DATA/Dev/Codex/carbon-footprint/app.js), [data.js](/Volumes/DATA/Dev/Codex/carbon-footprint/data.js), [storage.js](/Volumes/DATA/Dev/Codex/carbon-footprint/storage.js), [chart.js](/Volumes/DATA/Dev/Codex/carbon-footprint/chart.js), [styles.css](/Volumes/DATA/Dev/Codex/carbon-footprint/styles.css) 기반의 정적 웹앱이다.
+- 앱은 [index.html](../index.html), [app.js](../app.js), [data.js](../data.js), [storage.js](../storage.js), [chart.js](../chart.js), [styles.css](../styles.css) 기반의 정적 웹앱이다.
 - 기록 저장은 브라우저 `localStorage`에 직접 의존한다.
 - 화면, 계산 규칙, 저장 로직이 브라우저 스크립트 레벨에서 강하게 연결돼 있다.
 - 일별 기록, 최근 7일 요약, 날짜별 수정, 에코 상태 계산은 이미 동작한다.

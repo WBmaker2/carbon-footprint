@@ -19,6 +19,14 @@
 - `05_qa_findings.md`
 - `06_release_checklist.md`
 
+## 현재 추가 산출물
+
+- `05_qa_findings.md`
+- `06_release_checklist.md`
+- `07_ticket_ft001_orchestration_draft.md`
+- `08_project_analysis_and_fix_proposal.md`
+- `09_priority_roadmap.md` (현재 기준선 정리용, Phase 0에서 기준 정합성 점검)
+
 ## 각 파일에 공통으로 들어갈 것
 
 - 작성 목적

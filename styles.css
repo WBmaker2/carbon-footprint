@@ -211,6 +211,88 @@ canvas {
   line-height: 1.6;
 }
 
+.backup-controls {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.button-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.import-area {
+  display: grid;
+  gap: 10px;
+}
+
+.import-fieldset {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(31, 122, 92, 0.2);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.import-fieldset legend {
+  padding: 0 8px;
+  color: var(--accent-strong);
+  font-weight: 800;
+}
+
+.radio-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 14px;
+  color: var(--text);
+}
+
+.import-fieldset input {
+  accent-color: var(--accent);
+}
+
+.backup-status {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(31, 122, 92, 0.2);
+  background: rgba(31, 122, 92, 0.08);
+  line-height: 1.5;
+  color: var(--accent-strong);
+}
+
+.backup-status.status-error {
+  border-color: rgba(217, 93, 57, 0.35);
+  background: rgba(217, 93, 57, 0.1);
+  color: #9b3b22;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.storage-status {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(217, 93, 57, 0.2);
+  border-radius: 14px;
+  background: rgba(217, 93, 57, 0.1);
+  color: #9b3b22;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
 .control-grid {
   display: grid;
   gap: 14px;

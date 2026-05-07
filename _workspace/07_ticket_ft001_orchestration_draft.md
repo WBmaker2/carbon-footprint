@@ -53,10 +53,10 @@
 
 **읽을 것**
 
-- [index.html](/Volumes/DATA/Dev/Codex/carbon-footprint/index.html)
-- [styles.css](/Volumes/DATA/Dev/Codex/carbon-footprint/styles.css)
-- [app.js](/Volumes/DATA/Dev/Codex/carbon-footprint/app.js)
-- [_workspace/00_request_snapshot.md](/Volumes/DATA/Dev/Codex/carbon-footprint/_workspace/00_request_snapshot.md)
+- [index.html](../index.html)
+- [styles.css](../styles.css)
+- [app.js](../app.js)
+- [_workspace/00_request_snapshot.md](./00_request_snapshot.md)
 
 **남길 것**
 
@@ -79,10 +79,10 @@
 
 **읽을 것**
 
-- [data.js](/Volumes/DATA/Dev/Codex/carbon-footprint/data.js)
-- [storage.js](/Volumes/DATA/Dev/Codex/carbon-footprint/storage.js)
-- [app.js](/Volumes/DATA/Dev/Codex/carbon-footprint/app.js)
-- [_workspace/00_request_snapshot.md](/Volumes/DATA/Dev/Codex/carbon-footprint/_workspace/00_request_snapshot.md)
+- [data.js](../data.js)
+- [storage.js](../storage.js)
+- [app.js](../app.js)
+- [_workspace/00_request_snapshot.md](./00_request_snapshot.md)
 
 **남길 것**
 
@@ -114,8 +114,8 @@
 - `_workspace/01_design_brief.md`
 - `_workspace/02_ui_contract.md`
 - `_workspace/02_api_contract.md`
-- [index.html](/Volumes/DATA/Dev/Codex/carbon-footprint/index.html)
-- [app.js](/Volumes/DATA/Dev/Codex/carbon-footprint/app.js)
+- [index.html](../index.html)
+- [app.js](../app.js)
 
 **남길 것**
 
@@ -142,7 +142,7 @@
 - `_workspace/02_api_contract.md`
 - `_workspace/03_frontend_build_notes.md`
 - `_workspace/03_backend_build_notes.md`
-- [app.js](/Volumes/DATA/Dev/Codex/carbon-footprint/app.js)
+- [app.js](../app.js)
 
 **남길 것**
 
