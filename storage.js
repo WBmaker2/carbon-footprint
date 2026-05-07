@@ -1,12 +1,48 @@
 (function () {
+  const dateUtils = window.CarbonTrackerDate;
   let lastStorageError = null;
 
-  function setStorageError(action, error) {
-    lastStorageError = {
+  function makeStorageError(action, error) {
+    const normalizedError =
+      error &&
+      typeof error === "object" &&
+      typeof error.message === "string"
+        ? error
+        : {
+            name: error && error.name ? error.name : "StorageError",
+            message:
+              typeof error === "string"
+                ? error
+                : "브라우저 저장소를 사용할 수 없습니다.",
+          };
+
+    const baseMessage = normalizedError.message;
+
+    function getUserMessage(actionType) {
+      if (actionType === "read") {
+        return "저장된 데이터 형식이 손상돼 불러오지 못했어요. 기존 기록은 빈 상태로 시작해요. 백업 파일로 복구할 수 있어요.";
+      }
+      if (actionType === "migrate") {
+        return "로컬 저장 형식을 정리하는 과정에서 오류가 발생해 일부 기록만 보존되었을 수 있어요. 앱 안의 화면 값은 이어서 이어집니다.";
+      }
+      if (actionType === "clear") {
+        return "기록 삭제 요청을 저장소에 반영하지 못했어요. 현재 화면에서는 바뀐 내용이 유지되었지만, 브라우저 저장은 실패했을 수 있어요.";
+      }
+      return "현재 변경 내용을 브라우저 저장소에 저장하지 못했어요. 새로고침이나 창 닫기 후 반영되지 않을 수 있어요.";
+    }
+
+    const userMessage = getUserMessage(action);
+
+    return {
       action: action,
-      name: error && error.name ? error.name : "StorageError",
-      message: error && error.message ? error.message : "브라우저 저장소를 사용할 수 없습니다.",
+      name: normalizedError.name,
+      message: baseMessage,
+      userMessage: userMessage,
     };
+  }
+
+  function setStorageError(action, error) {
+    lastStorageError = makeStorageError(action, error);
   }
 
   function clearStorageError() {
@@ -24,92 +60,24 @@
     };
   }
 
+  const BACKUP_SCHEMA = "carbon-footprint-backup";
+  const BACKUP_APP_NAME = "carbon-footprint";
+  const MIN_BACKUP_VERSION = 1;
+
   function cloneDefaultState() {
     return Object.assign({}, window.CarbonTrackerConfig.DEFAULT_STATE);
   }
 
   function getLocalDateKey(date) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return year + "-" + month + "-" + day;
+    return dateUtils.getLocalDateKey(date);
   }
 
-  function getLegacySampleRecords() {
-    const templates = [
-      {
-        offsetDays: 0,
-        state: {
-          plastic: 2,
-          paper: 4,
-          can: 1,
-          general: 1,
-          electricityMinutes: 20,
-        },
-      },
-      {
-        offsetDays: 1,
-        state: {
-          plastic: 1,
-          paper: 2,
-          can: 0,
-          general: 2,
-          electricityMinutes: 30,
-        },
-      },
-      {
-        offsetDays: 2,
-        state: {
-          plastic: 3,
-          paper: 1,
-          can: 1,
-          general: 0,
-          electricityMinutes: 10,
-        },
-      },
-      {
-        offsetDays: 3,
-        state: {
-          plastic: 0,
-          paper: 3,
-          can: 0,
-          general: 1,
-          electricityMinutes: 40,
-        },
-      },
-    ];
-
-    return templates.reduce(function (records, template) {
-      const date = new Date();
-      date.setDate(date.getDate() - template.offsetDays);
-      records[getLocalDateKey(date)] = sanitizeState(template.state);
-      return records;
-    }, {});
+  function isDateKey(value) {
+    return dateUtils.isDateKey(value);
   }
 
-  function areSameState(leftState, rightState) {
-    const items = window.CarbonTrackerConfig.ITEMS;
-
-    return items.every(function (item) {
-      return Number(leftState[item.key] || 0) === Number(rightState[item.key] || 0);
-    });
-  }
-
-  function isLegacySampleOnly(records) {
-    const legacyRecords = getLegacySampleRecords();
-    const recordKeys = Object.keys(records || {}).sort();
-    const legacyKeys = Object.keys(legacyRecords).sort();
-
-    if (recordKeys.length !== legacyKeys.length) {
-      return false;
-    }
-
-    return recordKeys.every(function (key, index) {
-      return (
-        key === legacyKeys[index] &&
-        areSameState(records[key], legacyRecords[key])
-      );
-    });
+  function isObject(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
   }
 
   function isEmptyState(state) {
@@ -183,10 +151,7 @@
             ? legacyElectricityValue
             : legacyElectricityValue - defaultLighting;
 
-        baseState.hvacMinutes = normalizeValueByStep(
-          inferredHvacMinutes,
-          30
-        );
+        baseState.hvacMinutes = normalizeValueByStep(inferredHvacMinutes, 30);
       }
     }
 
@@ -196,11 +161,15 @@
   function sanitizeDailyRecords(records) {
     const safeRecords = {};
 
-    if (!records || typeof records !== "object") {
+    if (!isObject(records)) {
       return safeRecords;
     }
 
     Object.keys(records).forEach(function (dateKey) {
+      if (!isDateKey(dateKey)) {
+        return;
+      }
+
       const safeState = sanitizeState(records[dateKey]);
       if (!isEmptyState(safeState)) {
         safeRecords[dateKey] = safeState;
@@ -210,18 +179,124 @@
     return safeRecords;
   }
 
+  function createBackupPayload(dailyRecords) {
+    const safeRecords = sanitizeDailyRecords(dailyRecords);
+    return {
+      schema: BACKUP_SCHEMA,
+      version: getStorageMeta().version,
+      appName: BACKUP_APP_NAME,
+      exportedAt: new Date().toISOString(),
+      dailyRecords: safeRecords,
+    };
+  }
+
+  function parseBackupVersion(input) {
+    const currentVersion = getStorageMeta().version;
+    const rawVersion =
+      input.storageVersion !== undefined
+        ? input.storageVersion
+        : input.backupVersion !== undefined
+          ? input.backupVersion
+          : input.version;
+    if (rawVersion === undefined || rawVersion === null) {
+      return currentVersion;
+    }
+
+    const parsedVersion = Number(rawVersion);
+    if (
+      !Number.isInteger(parsedVersion) ||
+      parsedVersion < MIN_BACKUP_VERSION ||
+      parsedVersion > currentVersion
+    ) {
+      throw new Error(
+        "이 앱에서 만든 백업 파일이 아닙니다. 백업 버전이 호환되지 않습니다."
+      );
+    }
+
+    return parsedVersion;
+  }
+
+  function parseBackupPayload(input) {
+    if (!isObject(input)) {
+      throw new Error(
+        "이 앱에서 만든 백업 파일이 아닙니다. 올바른 JSON 객체가 아닙니다."
+      );
+    }
+
+    if (input.schema !== BACKUP_SCHEMA || input.appName !== BACKUP_APP_NAME) {
+      throw new Error("이 앱에서 만든 백업 파일이 아닙니다.");
+    }
+
+    const version = parseBackupVersion(input);
+
+    const rawRecords = input.dailyRecords;
+    if (!isObject(rawRecords)) {
+      throw new Error(
+        "이 앱에서 만든 백업 파일 형식이 아닙니다. dailyRecords 객체가 없습니다."
+      );
+    }
+
+    Object.keys(rawRecords).forEach(function (dateKey) {
+      const entry = rawRecords[dateKey];
+
+      if (!isDateKey(dateKey)) {
+        throw new Error(
+          "백업 파일 형식이 맞지 않습니다. 날짜 키가 YYYY-MM-DD 형식이 아닙니다."
+        );
+      }
+
+      if (!isObject(entry)) {
+        throw new Error(
+          "백업 파일 형식이 맞지 않습니다. 날짜별 기록은 객체여야 합니다."
+        );
+      }
+    });
+
+    const safeRecords = sanitizeDailyRecords(rawRecords);
+    return Object.assign(
+      {},
+      {
+        version: version,
+        appName: input.appName,
+        exportedAt: input.exportedAt,
+      },
+      {
+        dailyRecords: safeRecords,
+      }
+    );
+  }
+
+  function mergeDailyRecords(dailyRecords, incomingDailyRecords) {
+    const normalized = sanitizeDailyRecords(incomingDailyRecords);
+    const base = sanitizeDailyRecords(dailyRecords);
+    return persistDailyRecordsWithResult(Object.assign({}, base, normalized));
+  }
+
+  function mergeDailyRecordsWithResult(dailyRecords, incomingDailyRecords) {
+    return mergeDailyRecords(dailyRecords, incomingDailyRecords);
+  }
+
+  function replaceDailyRecords(incomingDailyRecords) {
+    const normalized = sanitizeDailyRecords(incomingDailyRecords);
+    return persistDailyRecordsWithResult(normalized);
+  }
+
+  function replaceDailyRecordsWithResult(incomingDailyRecords) {
+    return replaceDailyRecords(incomingDailyRecords);
+  }
+
   function readRawStorage() {
     const storageKey = getStorageMeta().key;
 
     try {
       const raw = window.localStorage.getItem(storageKey);
-      if (!raw) {
-        return null;
+      if (raw === null || raw === "") {
+        return { ok: true, payload: null, error: null };
       }
 
-      return JSON.parse(raw);
+      return { ok: true, payload: JSON.parse(raw), error: null };
     } catch (error) {
-      return null;
+      return { ok: false, payload: null, error: makeStorageError("read", error) };
     }
   }
 
@@ -236,14 +311,14 @@
       };
     }
 
-    if (raw.dailyRecords && typeof raw.dailyRecords === "object") {
+    if (isObject(raw.dailyRecords)) {
       const safeRecords = sanitizeDailyRecords(raw.dailyRecords);
-      const migratedRecords = isLegacySampleOnly(safeRecords) ? {} : safeRecords;
+      const sourceVersion = Number(raw.version || 0);
 
       return {
         version: currentVersion,
-        dailyRecords: migratedRecords,
-        migrated: Number(raw.version || 0) !== currentVersion,
+        dailyRecords: safeRecords,
+        migrated: sourceVersion !== currentVersion,
       };
     }
 
@@ -267,17 +342,48 @@
   }
 
   function loadDailyRecords() {
-    const raw = readRawStorage();
-    const normalized = normalizeStoragePayload(raw);
-
-    if (normalized.migrated) {
-      persistDailyRecords(normalized.dailyRecords);
+    const rawResult = readRawStorage();
+    if (!rawResult.ok) {
+      setStorageError("read", rawResult.error);
+      return {
+        ok: false,
+        records: {},
+        error: rawResult.error,
+      };
     }
 
-    return normalized.dailyRecords;
+    const normalized = normalizeStoragePayload(rawResult.payload);
+    if (!normalized.migrated) {
+      clearStorageError();
+      return {
+        ok: true,
+        records: normalized.dailyRecords,
+        error: null,
+      };
+    }
+
+    const migrationResult = persistDailyRecordsWithResult(
+      normalized.dailyRecords,
+      "migrate"
+    );
+    if (!migrationResult.ok) {
+      return {
+        ok: false,
+        records: migrationResult.records,
+        error: migrationResult.error,
+      };
+    }
+
+    return {
+      ok: true,
+      records: migrationResult.records,
+      error: null,
+    };
   }
 
-  function persistDailyRecords(dailyRecords) {
+  function persistDailyRecordsWithResult(dailyRecords, operation) {
+    const effectiveOperation =
+      typeof operation === "string" ? operation : "save";
     const storageMeta = getStorageMeta();
     const safeRecords = sanitizeDailyRecords(dailyRecords);
 
@@ -290,11 +396,24 @@
         })
       );
       clearStorageError();
+      return {
+        ok: true,
+        records: safeRecords,
+        error: null,
+      };
     } catch (error) {
-      setStorageError("save", error);
+      const storageError = makeStorageError(effectiveOperation, error);
+      setStorageError(effectiveOperation, storageError);
+      return {
+        ok: false,
+        records: safeRecords,
+        error: storageError,
+      };
     }
+  }
 
-    return safeRecords;
+  function persistDailyRecords(dailyRecords) {
+    return persistDailyRecordsWithResult(dailyRecords);
   }
 
   function getStateForDate(dateKey, dailyRecords) {
@@ -311,23 +430,32 @@
       nextRecords[dateKey] = safeState;
     }
 
-    return persistDailyRecords(nextRecords);
+    return persistDailyRecordsWithResult(nextRecords);
   }
 
   function clearStateForDate(dateKey, dailyRecords) {
     const nextRecords = Object.assign({}, dailyRecords || {});
     delete nextRecords[dateKey];
-    return persistDailyRecords(nextRecords);
+    return persistDailyRecordsWithResult(nextRecords);
   }
 
   function clearAllData() {
     try {
       window.localStorage.removeItem(getStorageMeta().key);
       clearStorageError();
-      return true;
+      return {
+        ok: true,
+        records: {},
+        error: null,
+      };
     } catch (error) {
-      setStorageError("clear", error);
-      return false;
+      const storageError = makeStorageError("clear", error);
+      setStorageError("clear", storageError);
+      return {
+        ok: false,
+        records: {},
+        error: storageError,
+      };
     }
   }
 
@@ -335,11 +463,19 @@
     clearAllData: clearAllData,
     clearStorageError: clearStorageError,
     clearStateForDate: clearStateForDate,
+    createBackupPayload: createBackupPayload,
+    mergeDailyRecordsWithResult: mergeDailyRecordsWithResult,
+    isDateKey: isDateKey,
     getLastStorageError: getLastStorageError,
     getStateForDate: getStateForDate,
+    parseBackupPayload: parseBackupPayload,
     isEmptyState: isEmptyState,
     loadDailyRecords: loadDailyRecords,
+    persistDailyRecordsWithResult: persistDailyRecordsWithResult,
     saveStateForDate: saveStateForDate,
+    replaceDailyRecordsWithResult: replaceDailyRecordsWithResult,
+    sanitizeDailyRecords: sanitizeDailyRecords,
     sanitizeState: sanitizeState,
+    readRawStorage: readRawStorage,
   };
 })();

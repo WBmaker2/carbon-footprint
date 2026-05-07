@@ -1,11 +1,15 @@
 (function () {
   const config = window.CarbonTrackerConfig;
+  const dateUtils = window.CarbonTrackerDate;
   const storage = window.CarbonTrackerStorage;
   const chartApi = window.CarbonTrackerChart;
+  const calculations = window.CarbonTrackerCalculations;
 
+  const loadResult = storage.loadDailyRecords();
   let lastKnownTodayKey = getTodayKey();
   let selectedDateKey = lastKnownTodayKey;
-  let dailyRecords = storage.loadDailyRecords();
+  let dailyRecords =
+    loadResult && isObject(loadResult.records) ? loadResult.records : {};
   let state = storage.getStateForDate(selectedDateKey, dailyRecords);
   let dailyChartInstance = null;
   let weeklyTrendChartInstance = null;
@@ -31,11 +35,17 @@
     }).format(date);
   }
 
+  function formatCsvValue(value) {
+    const text = value === null || value === undefined ? "" : String(value);
+    if (text.indexOf(",") === -1 && text.indexOf('"') === -1 && text.indexOf("\n") === -1) {
+      return text;
+    }
+
+    return '"' + text.replace(/"/g, '""') + '"';
+  }
+
   function getDateKey(date) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return year + "-" + month + "-" + day;
+    return dateUtils.getLocalDateKey(date);
   }
 
   function getToday() {
@@ -43,12 +53,157 @@
   }
 
   function getTodayKey() {
-    return getDateKey(getToday());
+    return dateUtils.getTodayKey();
+  }
+
+  function isDateToday(dateKey) {
+    return dateKey === getTodayKey();
+  }
+
+  function getSelectedDateLabel(dateKey) {
+    const selectedDate = getDateFromKey(dateKey);
+
+    if (isDateToday(dateKey)) {
+      return "오늘";
+    }
+
+    return formatShortDate(selectedDate) + " 과거 기록";
   }
 
   function getDateFromKey(dateKey) {
-    const parts = dateKey.split("-").map(Number);
-    return new Date(parts[0], parts[1] - 1, parts[2]);
+    return dateUtils.getDateFromKey(dateKey);
+  }
+
+  function getDateForFilename(date) {
+    return getDateKey(date || getToday());
+  }
+
+  function isObject(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function showOperationStatus(message, isError) {
+    const statusElement = document.getElementById("backupStatus");
+    if (!statusElement) {
+      return;
+    }
+
+    statusElement.hidden = false;
+    statusElement.textContent = message;
+    statusElement.classList.remove("status-success", "status-error");
+    statusElement.classList.add(isError ? "status-error" : "status-success");
+  }
+
+  function clearOperationStatus() {
+    const statusElement = document.getElementById("backupStatus");
+    if (!statusElement) {
+      return;
+    }
+
+    statusElement.hidden = true;
+    statusElement.textContent = "";
+    statusElement.classList.remove("status-success", "status-error");
+  }
+
+  function getStorageErrorMessage(storageError) {
+    if (!storageError || typeof storageError !== "object") {
+      return "원인을 확인할 수 없습니다.";
+    }
+
+    return storageError.userMessage || storageError.message || "원인을 확인할 수 없습니다.";
+  }
+
+  function downloadTextFile(fileName, content, type) {
+    const blob = new Blob([content], { type: type });
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+
+    anchor.href = objectUrl;
+    anchor.download = fileName;
+    anchor.rel = "noopener";
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+
+    setTimeout(function () {
+      window.URL.revokeObjectURL(objectUrl);
+    }, 0);
+  }
+
+  function getImportMode() {
+    const checked = document.querySelector("input[name='importMode']:checked");
+    if (!checked) {
+      return "merge";
+    }
+
+    return checked.value === "replace" ? "replace" : "merge";
+  }
+
+  function buildWeeklySummaryCsvContent() {
+    const recentRecords = getRecentRecords().slice().reverse();
+    const rows = [];
+    const csvHeader = [
+      "날짜",
+      "전체 탄소(kg)",
+      "학생 실천 탄소(kg)",
+      "학생 실천 수량",
+      "플라스틱(개)",
+      "종이(장)",
+      "캔(개)",
+      "일반쓰레기(개)",
+      "기본조명(분)",
+      "에어컨·온풍기(분)",
+    ];
+    rows.push(csvHeader.map(formatCsvValue).join(","));
+
+    recentRecords.forEach(function (entry) {
+      const totalCarbon = calculations.getTotalCarbon(entry.state);
+      const controllableCarbon = calculations.getControllableCarbon(entry.state);
+      const row = [
+        entry.dateKey,
+        totalCarbon.toFixed(2),
+        controllableCarbon.toFixed(2),
+        calculations.getStudentActionCount(entry.state),
+        entry.state.plastic,
+        entry.state.paper,
+        entry.state.can,
+        entry.state.general,
+        entry.state.baseLightingMinutes,
+        entry.state.hvacMinutes,
+      ];
+      rows.push(row.map(formatCsvValue).join(","));
+    });
+
+    const weeklyCarbon = recentRecords.reduce(function (total, entry) {
+      return total + calculations.getTotalCarbon(entry.state);
+    }, 0);
+    const weeklyActionCount = recentRecords.reduce(function (total, entry) {
+      return total + calculations.getStudentActionCount(entry.state);
+    }, 0);
+    const summaryRow = [
+      "최근7일합계",
+      weeklyCarbon.toFixed(2),
+      "",
+      weeklyActionCount,
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+    ];
+    rows.push(summaryRow.map(formatCsvValue).join(","));
+
+    return rows.join("\n");
+  }
+
+  function getBackupFileName() {
+    return "carbon-footprint-backup-" + getDateForFilename(getToday()) + ".json";
+  }
+
+  function getWeeklySummaryCsvFileName() {
+    return "carbon-footprint-7day-summary-" + getDateForFilename(getToday()) + ".csv";
   }
 
   function getLastNDates(count) {
@@ -64,112 +219,6 @@
     return dates;
   }
 
-  function getItemByKey(key) {
-    return config.ITEMS.find(function (item) {
-      return item.key === key;
-    });
-  }
-
-  function getControllableItems() {
-    return config.ITEMS.filter(function (item) {
-      return item.affectsEcoStatus !== false;
-    });
-  }
-
-  function getDefaultValue(item) {
-    return Number(config.DEFAULT_STATE[item.key] || 0);
-  }
-
-  function getComparableValue(item, currentState) {
-    const normalizedValue = Number(currentState[item.key] || 0) / item.step;
-    const normalizedDefault = getDefaultValue(item) / item.step;
-    return Math.max(0, normalizedValue - normalizedDefault);
-  }
-
-  function getStudentActionCount(currentState) {
-    return getControllableItems().reduce(function (total, item) {
-      return total + getComparableValue(item, currentState);
-    }, 0);
-  }
-
-  function getTotalCarbon(currentState) {
-    return config.ITEMS.reduce(function (total, item) {
-      return total + Number(currentState[item.key] || 0) * item.carbonFactor;
-    }, 0);
-  }
-
-  function getControllableCarbon(currentState) {
-    return getControllableItems().reduce(function (total, item) {
-      return total + Number(currentState[item.key] || 0) * item.carbonFactor;
-    }, 0);
-  }
-
-  function getBaselineLightingCarbon(currentState) {
-    const lightingItem = getItemByKey("baseLightingMinutes");
-    if (!lightingItem) {
-      return 0;
-    }
-
-    return Number(currentState[lightingItem.key] || 0) * lightingItem.carbonFactor;
-  }
-
-  function getTopItem(currentState) {
-    let topItem = null;
-    let topValue = -1;
-
-    getControllableItems().forEach(function (item) {
-      const comparableValue = getComparableValue(item, currentState);
-
-      if (comparableValue > topValue) {
-        topItem = item;
-        topValue = comparableValue;
-      }
-    });
-
-    if (!topItem || topValue <= 0) {
-      return null;
-    }
-
-    return topItem;
-  }
-
-  function getEcoLevel(controllableCarbon) {
-    return config.ECO_LEVELS.find(function (level) {
-      return controllableCarbon <= level.maxCarbon;
-    });
-  }
-
-  function getTopItemFromRecords(records) {
-    const totalsByItem = getControllableItems().reduce(function (acc, item) {
-      acc[item.key] = 0;
-      return acc;
-    }, {});
-
-    Object.keys(records).forEach(function (dateKey) {
-      const currentState = records[dateKey];
-
-      getControllableItems().forEach(function (item) {
-        totalsByItem[item.key] += getComparableValue(item, currentState);
-      });
-    });
-
-    let topItem = null;
-    let topValue = -1;
-
-    getControllableItems().forEach(function (item) {
-      if (totalsByItem[item.key] > topValue) {
-        topItem = item;
-        topValue = totalsByItem[item.key];
-      }
-    });
-
-    if (!topItem || topValue <= 0) {
-      return null;
-    }
-
-    return topItem;
-  }
-
   function getRecentRecords() {
     return getLastNDates(config.HISTORY_DAYS).map(function (date) {
       const dateKey = getDateKey(date);
@@ -180,34 +229,6 @@
         state: dayState,
       };
     });
-  }
-
-  function getTip(topItem, controllableCarbon) {
-    if (!topItem && controllableCarbon === 0) {
-      return {
-        title: "기본 조명은 기준 사용으로 보고 있어요",
-        text: "지금은 에어컨·온풍기 사용과 쓰레기 기록이 거의 없어서 좋은 상태예요.",
-      };
-    }
-
-    if (!topItem) {
-      return {
-        title: "기록을 시작해 보세요",
-        text: "쓰레기나 에어컨·온풍기 사용을 기록하면 학생들이 줄일 수 있는 부분을 바로 알 수 있어요.",
-      };
-    }
-
-    if (controllableCarbon >= 1.8) {
-      return {
-        title: "학생이 줄일 수 있는 부분을 찾아보세요",
-        text: topItem.tip + " 오늘은 " + topItem.label + "부터 줄여 보면 좋아요.",
-      };
-    }
-
-    return {
-      title: "잘 살펴보고 있어요",
-      text: topItem.tip + " 지금처럼 학생이 줄일 수 있는 부분을 계속 비교해 보세요.",
-    };
   }
 
   function createElement(tagName, className, textContent) {
@@ -277,31 +298,142 @@
     if (!storageError) {
       statusElement.hidden = true;
       statusElement.textContent = "";
+      statusElement.classList.remove("status-success", "status-error");
       return;
     }
 
     statusElement.hidden = false;
-    statusElement.textContent =
-      "브라우저 저장소에 기록을 저장하지 못했어요. 페이지를 닫거나 새로고침하면 방금 바꾼 내용이 사라질 수 있어요.";
+    statusElement.classList.remove("status-success");
+    statusElement.textContent = storageError.userMessage || storageError.message;
+    statusElement.classList.add("status-error");
+  }
+
+  function downloadBackupJson() {
+    try {
+      const payload = storage.createBackupPayload(dailyRecords);
+      downloadTextFile(
+        getBackupFileName(),
+        JSON.stringify(payload, null, 2),
+        "application/json;charset=utf-8"
+      );
+      showOperationStatus("백업 파일을 내보냈어요: " + payload.exportedAt, false);
+    } catch (error) {
+      showOperationStatus("백업 내보내기에 실패했어요: " + error.message, true);
+    }
+  }
+
+  function importBackupFile(file) {
+    if (!file) {
+      showOperationStatus("가져올 백업 파일을 선택해 주세요.", true);
+      return;
+    }
+
+    return file
+      .text()
+      .then(function (rawText) {
+        const trimmed = rawText.trim();
+        if (!trimmed) {
+          throw new Error("파일 내용이 비어 있어요.");
+        }
+
+        let parsed;
+        try {
+          parsed = JSON.parse(trimmed);
+        } catch (error) {
+          throw new Error("백업 파일 형식이 올바른 JSON이 아닙니다.");
+        }
+        const payload = storage.parseBackupPayload(parsed);
+        const mode = getImportMode();
+        const incomingCount = Object.keys(payload.dailyRecords || {}).length;
+
+        if (incomingCount === 0 && mode === "replace") {
+          const shouldClear = window.confirm(
+            "선택한 백업에 기록이 없습니다.\n\n" +
+              "교체 모드면 현재 모든 날짜 기록이 삭제됩니다. 진행할까요?"
+          );
+
+          if (!shouldClear) {
+            throw new Error("가져오기를 취소했습니다.");
+          }
+        }
+
+        const importResult =
+          mode === "replace"
+            ? storage.replaceDailyRecordsWithResult(payload.dailyRecords)
+            : storage.mergeDailyRecordsWithResult(dailyRecords, payload.dailyRecords);
+
+        dailyRecords = importResult.records;
+        state = storage.getStateForDate(selectedDateKey, dailyRecords);
+        render();
+
+        if (!importResult.ok) {
+          const storageError = importResult.error;
+          throw new Error(
+            getStorageErrorMessage(storageError)
+          );
+        }
+
+        const modeLabel = mode === "replace" ? "교체" : "병합";
+        showOperationStatus(
+          modeLabel + "로 백업을 복원했어요. 복원 기록 " + incomingCount + "건, 적용일자 " +
+          (payload.exportedAt ? payload.exportedAt : "미상"),
+          false
+        );
+      })
+      .catch(function (error) {
+        state = storage.getStateForDate(selectedDateKey, dailyRecords);
+        render();
+        showOperationStatus("백업 가져오기에 실패했어요: " + error.message, true);
+      });
+  }
+
+  function downloadWeeklySummaryCsv() {
+    try {
+      const fileName = getWeeklySummaryCsvFileName();
+      const csv = "\uFEFF" + buildWeeklySummaryCsvContent();
+      downloadTextFile(fileName, csv, "text/csv;charset=utf-8");
+      showOperationStatus("최근 7일 요약 CSV를 다운로드했어요: " + fileName, false);
+    } catch (error) {
+      showOperationStatus("CSV 다운로드에 실패했어요: " + error.message, true);
+    }
   }
 
   function updateSelectedDateUI() {
     const selectedDate = getDateFromKey(selectedDateKey);
-    const todayKey = getTodayKey();
-    const isTodaySelected = selectedDateKey === todayKey;
+    const isTodaySelected = isDateToday(selectedDateKey);
+    const selectedDateLabel = isTodaySelected
+      ? "오늘"
+      : formatShortDate(selectedDate);
     const titleText = isTodaySelected
       ? "오늘 기록을 수정하고 있어요"
-      : formatShortDate(selectedDate) + " 기록을 수정하고 있어요";
+      : selectedDateLabel + " 과거 기록을 수정하고 있어요";
     const descriptionText = isTodaySelected
       ? "기본 조명 360분을 기준으로, 오늘의 쓰레기와 에어컨·온풍기 사용을 입력하거나 고칠 수 있어요."
       : formatShortDate(selectedDate) +
-        "에 저장한 기록을 불러왔어요. 기본 조명 기준 위에 쓰레기와 에어컨·온풍기 사용을 수정할 수 있어요.";
+        "에 저장한 과거 기록을 불러와 수정할 수 있어요. 선택한 날짜의 항목만 바꾸며, 다른 날짜 기록은 유지됩니다.";
 
     const dateInput = document.getElementById("recordDate");
-    dateInput.max = todayKey;
+    dateInput.max = getTodayKey();
     dateInput.value = selectedDateKey;
     document.getElementById("selectedDateTitle").textContent = titleText;
     document.getElementById("selectedDateDescription").textContent = descriptionText;
+  }
+
+  function getResetConfirmMessage() {
+    const selectedDate = getDateFromKey(selectedDateKey);
+    const isTodaySelected = isDateToday(selectedDateKey);
+    const selectedDateLabel = isTodaySelected
+      ? "오늘"
+      : formatShortDate(selectedDate) + " (과거)";
+    const affectedScope = isTodaySelected
+      ? "오늘 기록(선택 날짜)"
+      : getSelectedDateLabel(selectedDateKey);
+
+    return (
+      `${selectedDateLabel} 기록을 초기화할까요?\n\n` +
+      `삭제 대상: ${affectedScope}만\n` +
+      "다른 날짜 기록은 유지되지만, 삭제된 값은 되돌릴 수 없습니다."
+    );
   }
 
   function updateControlValues() {
@@ -317,105 +449,55 @@
   }
 
   function updateSummary() {
-    const totalCarbon = getTotalCarbon(state);
-    const controllableCarbon = getControllableCarbon(state);
-    const baselineLightingCarbon = getBaselineLightingCarbon(state);
-    const topItem = getTopItem(state);
-    const ecoLevel = getEcoLevel(controllableCarbon);
-    const tip = getTip(topItem, controllableCarbon);
+    const viewModel = calculations.buildSummaryViewModel(state, {
+      isTodaySelected: isDateToday(selectedDateKey),
+    });
 
-    document.getElementById("totalCount").textContent = String(
-      getStudentActionCount(state)
-    );
+    document.getElementById("summaryPanelKicker").textContent =
+      viewModel.summaryPanelKicker;
+    document.getElementById("tipPanelKicker").textContent =
+      viewModel.tipPanelKicker;
+    document.getElementById("totalCount").textContent = viewModel.totalCountText;
     document.getElementById("totalCountDescription").textContent =
-      "기본 조명은 제외하고 학생이 줄이거나 조절할 수 있는 기록만 세어요.";
-    document.getElementById("totalCarbon").textContent = totalCarbon.toFixed(2) + " kg";
+      viewModel.totalCountDescription;
+    document.getElementById("totalCarbon").textContent = viewModel.totalCarbonText;
     document.getElementById("totalCarbonDescription").textContent =
-      "기본 조명 " +
-      baselineLightingCarbon.toFixed(2) +
-      "kg를 포함한 전체 예상 탄소예요.";
-    document.getElementById("topItem").textContent = topItem
-      ? topItem.label
-      : "아직 없음";
-    document.getElementById("topItemDescription").textContent = topItem
-      ? "학생이 줄일 수 있는 항목 중 " + topItem.label + "이 가장 많이 나왔어요."
-      : "기본 조명은 기준 사용으로 보고 있어요. 추가 사용이나 쓰레기가 거의 없어요.";
-    document.getElementById("ecoStatus").textContent = ecoLevel.label;
+      viewModel.totalCarbonDescription;
+    document.getElementById("topItem").textContent = viewModel.topItemText;
+    document.getElementById("topItemDescription").textContent =
+      viewModel.topItemDescription;
+    document.getElementById("ecoStatus").textContent = viewModel.ecoStatusText;
     document.getElementById("statusDescription").textContent =
-      ecoLevel.description +
-      " 학생 실천 탄소는 " +
-      controllableCarbon.toFixed(2) +
-      "kg로 계산했어요.";
-    document.getElementById("tipTitle").textContent = tip.title;
-    document.getElementById("tipText").textContent = tip.text;
+      viewModel.statusDescription;
+    document.getElementById("tipTitle").textContent = viewModel.tipTitle;
+    document.getElementById("tipText").textContent = viewModel.tipText;
 
     const statusCard = document.querySelector(".status-card");
     statusCard.classList.remove("good", "normal", "alert");
-    statusCard.classList.add(ecoLevel.className);
+    statusCard.classList.add(viewModel.statusClassName);
   }
 
-  function getHistoryDescription(entryTopItem, totalCount, totalCarbon, controllableCarbon, isEmpty) {
-    if (isEmpty) {
-      return "기록이 없어요. 눌러서 새로 입력할 수 있어요.";
-    }
-
-    if (entryTopItem) {
-      return (
-        "실천 " +
-        totalCount +
-        "단위 · 전체 " +
-        totalCarbon.toFixed(2) +
-        "kg · 주요 대상: " +
-        entryTopItem.label
-      );
-    }
-
-    return (
-      "기본 조명 중심 · 전체 " +
-      totalCarbon.toFixed(2) +
-      "kg · 학생 실천 탄소 " +
-      controllableCarbon.toFixed(2) +
-      "kg"
-    );
-  }
-
-  function createHistoryItem(entry) {
+  function createHistoryItem(viewModel) {
     const item = document.createElement("button");
-    const entryTopItem = getTopItem(entry.state);
-    const totalCount = getStudentActionCount(entry.state);
-    const totalCarbon = getTotalCarbon(entry.state);
-    const controllableCarbon = getControllableCarbon(entry.state);
-    const isEmpty = storage.isEmptyState(entry.state);
-    const isActive = entry.dateKey === selectedDateKey;
     const details = createElement("div");
-    const title = createElement("h3", "", formatShortDate(entry.date));
+    const title = createElement("h3", "", viewModel.title);
     const description = createElement(
       "p",
       "",
-      getHistoryDescription(
-        entryTopItem,
-        totalCount,
-        totalCarbon,
-        controllableCarbon,
-        isEmpty
-      )
+      viewModel.description
     );
     const historyValue = createElement(
       "div",
       "history-value",
-      isActive
-        ? "선택 중"
-        : isEmpty
-          ? "기록 없음"
-          : controllableCarbon.toFixed(2) + " kg"
+      viewModel.valueText
     );
 
     item.type = "button";
     item.className =
       "history-item" +
-      (isEmpty ? " empty" : "") +
-      (isActive ? " active" : "");
-    item.dataset.dateKey = entry.dateKey;
+      (viewModel.isEmpty ? " empty" : "") +
+      (viewModel.isActive ? " active" : "");
+    item.dataset.dateKey = viewModel.dateKey;
     details.append(title, description);
     item.append(details, historyValue);
 
@@ -424,48 +506,31 @@
 
   function renderHistory() {
     const recentRecords = getRecentRecords();
-    const activeRecords = recentRecords.filter(function (entry) {
-      return !storage.isEmptyState(entry.state);
+    const viewModel = calculations.buildWeeklySummaryViewModel(recentRecords, {
+      selectedDateKey: selectedDateKey,
+      formatShortDate: formatShortDate,
+      formatCompactDate: formatCompactDate,
     });
-    const weeklyCarbon = activeRecords.reduce(function (total, entry) {
-      return total + getTotalCarbon(entry.state);
-    }, 0);
-    const weeklyTopItem = getTopItemFromRecords(
-      activeRecords.reduce(function (acc, entry) {
-        acc[entry.dateKey] = entry.state;
-        return acc;
-      }, {})
-    );
 
     document.getElementById("weeklyActiveDays").textContent =
-      String(activeRecords.length) + "일";
+      viewModel.weeklyActiveDaysText;
     document.getElementById("weeklyCarbon").textContent =
-      weeklyCarbon.toFixed(2) + " kg";
-    document.getElementById("weeklyTopItem").textContent = weeklyTopItem
-      ? weeklyTopItem.label
-      : "아직 없음";
+      viewModel.weeklyCarbonText;
+    document.getElementById("weeklyTopItem").textContent =
+      viewModel.weeklyTopItemText;
 
     const historyList = document.getElementById("historyList");
     historyList.innerHTML = "";
 
-    recentRecords.forEach(function (entry) {
-      historyList.appendChild(createHistoryItem(entry));
+    viewModel.historyItems.forEach(function (historyItem) {
+      historyList.appendChild(createHistoryItem(historyItem));
     });
 
-    const trendLabels = recentRecords
-      .slice()
-      .reverse()
-      .map(function (entry) {
-        return formatCompactDate(entry.date);
-      });
-    const trendValues = recentRecords
-      .slice()
-      .reverse()
-      .map(function (entry) {
-        return Number(getControllableCarbon(entry.state).toFixed(2));
-      });
-
-    chartApi.updateWeeklyTrendChart(weeklyTrendChartInstance, trendLabels, trendValues);
+    chartApi.updateWeeklyTrendChart(
+      weeklyTrendChartInstance,
+      viewModel.trendLabels,
+      viewModel.trendValues
+    );
   }
 
   function render() {
@@ -478,7 +543,18 @@
   }
 
   function persistSelectedState() {
-    dailyRecords = storage.saveStateForDate(selectedDateKey, state, dailyRecords);
+    const saveResult = storage.saveStateForDate(
+      selectedDateKey,
+      state,
+      dailyRecords
+    );
+
+    dailyRecords = saveResult.records;
+    state = storage.getStateForDate(selectedDateKey, dailyRecords);
+
+    if (!saveResult.ok) {
+      return;
+    }
   }
 
   function loadSelectedDate(dateKey) {
@@ -488,7 +564,7 @@
   }
 
   function updateState(key, delta) {
-    const item = getItemByKey(key);
+    const item = calculations.getItemByKey(key);
     if (!item) {
       return;
     }
@@ -512,7 +588,7 @@
         return;
       }
 
-      const item = getItemByKey(card.dataset.key);
+      const item = calculations.getItemByKey(card.dataset.key);
       if (!item) {
         return;
       }
@@ -539,6 +615,10 @@
     const dateInput = document.getElementById("recordDate");
     const todayButton = document.getElementById("todayButton");
     const clearAllButton = document.getElementById("clearAllButton");
+    const exportButton = document.getElementById("exportBackupButton");
+    const importButton = document.getElementById("importBackupButton");
+    const importInput = document.getElementById("backupFileInput");
+    const exportCsvButton = document.getElementById("exportCsvButton");
 
     dateInput.addEventListener("change", function () {
       const currentTodayKey = getTodayKey();
@@ -552,31 +632,91 @@
 
     clearAllButton.addEventListener("click", function () {
       const shouldClear = window.confirm(
-        "이 브라우저에 저장된 모든 날짜 기록을 삭제할까요?"
+        "이 브라우저(localStorage)에 저장된 모든 날짜 기록을 삭제할까요?\n\n" +
+          "오늘·어제·수업 중 수정한 기록까지 포함해 되돌릴 수 없습니다.\n" +
+          "삭제 후에는 브라우저에서 날짜 기록을 복구할 수 없습니다."
       );
 
       if (!shouldClear) {
         return;
       }
 
-      const didClear = storage.clearAllData();
-      if (!didClear) {
+      const clearAllResult = storage.clearAllData();
+      if (!clearAllResult.ok) {
+        showOperationStatus(
+          "전체 기록 삭제 결과를 저장소에 반영하지 못했어요. " +
+            getStorageErrorMessage(clearAllResult.error),
+          true
+        );
         render();
         return;
       }
 
-      dailyRecords = {};
+      dailyRecords = clearAllResult.records;
       selectedDateKey = getTodayKey();
       state = storage.getStateForDate(selectedDateKey, dailyRecords);
       render();
     });
+
+    if (exportButton) {
+      exportButton.addEventListener("click", function () {
+        clearOperationStatus();
+        downloadBackupJson();
+      });
+    }
+
+    if (importButton && importInput) {
+      importButton.addEventListener("click", function () {
+        clearOperationStatus();
+        importInput.click();
+      });
+
+      importInput.addEventListener("change", function () {
+        const file = importInput.files && importInput.files[0];
+        importInput.value = "";
+        clearOperationStatus();
+        importBackupFile(file);
+      });
+    }
+
+    if (exportCsvButton) {
+      exportCsvButton.addEventListener("click", function () {
+        clearOperationStatus();
+        downloadWeeklySummaryCsv();
+      });
+    }
   }
 
   function bindResetEvent() {
     const resetButton = document.getElementById("resetButton");
     resetButton.addEventListener("click", function () {
+      const previousState = Object.assign({}, state);
+      const previousRecords = Object.assign({}, dailyRecords);
+
+      const shouldClear = window.confirm(getResetConfirmMessage());
+
+      if (!shouldClear) {
+        return;
+      }
+
+      const clearResult = storage.clearStateForDate(
+        selectedDateKey,
+        dailyRecords
+      );
+      if (!clearResult.ok) {
+        state = previousState;
+        dailyRecords = previousRecords;
+        showOperationStatus(
+          "선택 날짜 초기화 저장 반영에 실패했어요. 화면은 그대로 유지되고 저장은 적용되지 않았을 수 있어요. " +
+            getStorageErrorMessage(clearResult.error),
+          true
+        );
+        render();
+        return;
+      }
+
       state = Object.assign({}, config.DEFAULT_STATE);
-      dailyRecords = storage.clearStateForDate(selectedDateKey, dailyRecords);
+      dailyRecords = clearResult.records;
       render();
     });
   }

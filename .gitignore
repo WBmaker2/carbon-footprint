@@ -1,0 +1,11 @@
+.DS_Store
+.worktrees/
+worktrees/
+
+*.log
+*.tmp
+*.temp
+tmp/
+temp/
+*.swp
+*.swo
